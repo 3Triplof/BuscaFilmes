@@ -33,8 +33,8 @@ def interpretar_comando(texto):
     
     return busca
 
-# --- FUNÇÃO DE BUSCA (CORRIGIDA) ---
-def buscar_filme(termo):
+# --- FUNÇÃO DE BUSCA (MOSTRA TOP 10 SEMPRE) ---
+def buscar_filme(termo, intencao):
     params = {"q": termo}
     
     try:
@@ -45,41 +45,32 @@ def buscar_filme(termo):
         
         dados = response.json()
         
-        # Agora busca em "description" (não "results")
         if not dados.get("ok") or not dados.get("description"):
-            # Nota: corrigido para "dados" (em português do código)
-            if not dados.get("ok") or not dados.get("description"):
-                return f"Nenhum filme encontrado para '{termo}'. Tente outro nome."
+            return f"Nenhum filme encontrado para '{termo}'. Tente outro nome."
         
         lista_filmes = dados["description"]
         
-        # Se usuário quer "melhores", ordena por RANK (rank menor = popular)
-        if "melhor" in termo.lower() or "top" in termo.lower():
+        # Se intenção é "melhores", ordena por RANK
+        if intencao == "melhores":
             lista_filmes.sort(key=lambda x: int(x.get('#RANK', 999999)))
-            melhores = lista_filmes[:3]
+        
+        # MOSTRA TOP 10 SEMPRE
+        top_filmes = lista_filmes[:10]
+        
+        resposta = "🎥 *Top 10 Filmes Relacionados:*\n\n"
+        for i, filme in enumerate(top_filmes):
+            titulo = filme.get('#TITLE', 'Unknown')
+            ano = filme.get('#YEAR', 'Unknown')
+            rank = filme.get('#RANK', 'Unknown')
             
-            resposta = "🎥 *Top 3 Filmes Relacionados:*\n\n"
-            for i, filme in enumerate(melhores):
-                titulo = filme.get('#TITLE', 'Unknown')
-                ano = filme.get('#YEAR', 'Unknown')
-                rank = filme.get('#RANK', 'Unknown')
-                
-                resposta += f"{i+1}° *{titulo}* ({ano})\n"
-                resposta += f"   🏆 Rank: {rank}\n\n"
-            return resposta
+            resposta += f"{i+1}° *{titulo}* ({ano})\n"
+            resposta += f"   🏆 Rank: {rank}\n\n"
         
-        # Volta o primeiro resultado
-        filme = lista_filmes[0]
-        titulo = filme.get('#TITLE', 'Unknown')
-        ano = filme.get('#YEAR', 'Unknown')
-        link = filme.get('#IMDB_URL', '')
-        
-        return f"🎬 *{titulo}*\n📅 {ano}\n🔗 {link}"
+        return resposta
             
     except Exception as e:
         print(f"ERRO DE CONEXÃO: {str(e)}")
         return "Erro de conexão com a API de filmes."
-
 # --- ENDPOINT WEBHOOK ---
 @app.route("/webhook", methods=["POST"])
 def webhook():
