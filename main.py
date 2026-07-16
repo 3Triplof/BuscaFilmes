@@ -11,6 +11,7 @@ BASE_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 # TMDb API
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 TMDB_BASE = "https://api.themoviedb.org/3"
+TMDB_IMG_BASE = "https://image.tmdb.org/t/p/w500"
 
 # --- FUNÇÃO DE INTERPRETAÇÃO ---
 def interpretar_comando(texto):
@@ -38,12 +39,12 @@ def interpretar_comando(texto):
     
     return busca, intencao
 
-# --- BUSCA LISTA DE FILMES (TMDb) ---
+# --- BUSCA LISTA DE FILMES (COM POSTER) ---
 def buscar_filme(termo, intencao, chat_id, message_id):
     params = {
         "api_key": TMDB_API_KEY,
         "query": termo,
-        "language": "pt-BR"  # Retorna em português
+        "language": "pt-BR"
     }
     
     try:
@@ -59,7 +60,6 @@ def buscar_filme(termo, intencao, chat_id, message_id):
         
         lista_filmes = dados["results"]
         
-        # Se "melhores", ordena por votação (vote_average)
         if intencao == "melhores":
             lista_filmes.sort(key=lambda x: float(x.get('vote_average', 0)), reverse=True)
         
@@ -71,13 +71,10 @@ def buscar_filme(termo, intencao, chat_id, message_id):
         buttons = []
         for i, filme in enumerate(top_filmes):
             titulo = filme.get('title', 'Unknown')
-            poster = filme.get('poster_path', '')
-            media_id = filme.get('id', '')  # ID numérico da TMDb
+            poster_path = filme.get('poster_path', '')
+            media_id = filme.get('id', '')
             
-            # Nome do botão
             nome_botao = f"{i+1}. {titulo}"
-            
-            # Data do botão
             dados_botao = f"movie:{media_id}"
             
             buttons.append([{"text": nome_botao, "callback_data": dados_botao}])
@@ -92,28 +89,44 @@ def buscar_filme(termo, intencao, chat_id, message_id):
         }
         
         requests.post(f"{BASE_URL}/sendMessage", json=payload)
-        
         return "OK"
             
     except Exception as e:
         print(f"ERRO BUSCA: {type(e).__name__} - {str(e)}")
         return "Erro de conexão com TMDb."
 
-# --- BUSCA DETALHES (TMDb) ---
+# --- BUSCA DETALHES (POSTER + ELENCO + DIRETOR) ---
 def buscar_detalhes(media_id, chat_id, callback_id):
-    params = {
+    # 1. Detalhes do filme
+    params_det = {
         "api_key": TMDB_API_KEY,
         "language": "pt-BR"
     }
     
     try:
-        response = requests.get(f"{TMDB_BASE}/movie/{media_id}", params=params, timeout=10)
+        response_det = requests.get(f"{TMDB_BASE}/movie/{media_id}", params=params_det, timeout=10)
         
-        if response.status_code != 200:
+        if response_det.status_code != 200:
             return "Erro ao buscar detalhes."
         
-        filme = response.json()
+        filme = response_det.json()
         
+        # 2. Elenco + Crew (para pegar Diretor)
+        params_cast = {
+            "api_key": TMDB_API_KEY,
+            "language": "pt-BR"
+        }
+        response_cast = requests.get(f"{TMDB_BASE}/movie/{media_id}/credits", params=params_cast, timeout=10)
+        cast_data = response_cast.json() if response_cast.status_code == 200 else {}
+        
+        # Encontrar Diretor (crew)
+        diretor = "Unknown"
+        for member in cast_data.get('crew', []):
+            if member.get('job') == 'Director':
+                diretor = member.get('name', 'Unknown')
+                break
+        
+        # Formata texto
         titulo = filme.get('title', 'Unknown')
         ano = filme.get('release_date', 'Unknown')[:4] if filme.get('release_date') else 'Unknown'
         generos = ", ".join([g.get('name', '') for g in filme.get('genres', [])])
@@ -121,23 +134,48 @@ def buscar_detalhes(media_id, chat_id, callback_id):
         nota = filme.get('vote_average', 'Unknown')
         descricao = filme.get('overview', '')
         
+        # Top 5 atores
+        elenco = []
+        for actor in cast_data.get('cast', [])[:5]:
+            nome = actor.get('name', 'Unknown')
+            personagem = actor.get('character', '')
+            elenco.append(f"• {nome} ({personagem})")
+        
+        elenco_text = "\n".join(elenco)
+        
         texto = f"""
 🎬 *{titulo}*
 📅 {ano}
 ⭐ Nota: {nota}/10
 🎭 Gênero: {generos}
 ⏱️ Duração: {duracao} min
+🎞️ Diretor: *{diretor}*
 
 📝 *{descricao}*
+
+🎞️ *Elenco Principal:*
+{elenco_text}
 """
         
-        payload = {
-            "chat_id": chat_id,
-            "text": texto,
-            "parse_mode": "Markdown"
-        }
-        
-        requests.post(f"{BASE_URL}/sendMessage", json=payload)
+        # 3. Se tem poster, enviar imagem + texto
+        poster_path = filme.get('poster_path', '')
+        if poster_path:
+            poster_url = f"{TMDB_IMG_BASE}{poster_path}"
+            
+            payload_img = {
+                "chat_id": chat_id,
+                "photo": poster_url,
+                "caption": texto,
+                "parse_mode": "Markdown"
+            }
+            requests.post(f"{BASE_URL}/sendPhoto", json=payload_img)
+        else:
+            payload_text = {
+                "chat_id": chat_id,
+                "text": texto,
+                "parse_mode": "Markdown"
+            }
+            requests.post(f"{BASE_URL}/sendMessage", json=payload_text)
         
         return "OK"
             
