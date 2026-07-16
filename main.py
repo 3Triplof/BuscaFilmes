@@ -71,7 +71,7 @@ def buscar_filme(termo, intencao):
             resposta += f"{i+1}° *{titulo}* ({ano})\n"
             resposta += f"   🏆 Rank: {rank}\n\n"
         
-        return respuesta
+        return resposta
             
     except Exception as e:
         print(f"ERRO DE CONEXÃO: {str(e)}")
