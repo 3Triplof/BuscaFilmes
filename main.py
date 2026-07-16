@@ -13,42 +13,86 @@ TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 TMDB_BASE = "https://api.themoviedb.org/3"
 TMDB_IMG_BASE = "https://image.tmdb.org/t/p/w500"
 
-# --- FUNÇÃO DE INTERPRETAÇÃO ---
+# IDs de Gênero (TMDb)
+GENRES = {
+    "action": 28,
+    "animation": 16,
+    "comedy": 35,
+    "crime": 80,
+    "fantasy": 14,
+    "scifi": 878,
+    "sci-fi": 878,
+    "horror": 27,
+    "mystery": 9648,
+    "romance": 10749,
+    "drama": 18
+}
+
+# --- FUNÇÃO DE INTERPRETAÇÃO (ATUALIZADA) ---
 def interpretar_comando(texto):
     texto = texto.lower()
     busca = ""
     intencao = "normal"
+    genre_id = None  # ID do gênero, se houver
     
     if "melhor" in texto or "top" in texto:
         intencao = "melhores"
     
-    if "ficção" in texto or "sci-fi" in texto:
+    # Detecta categoria + gênero
+    if "ficção" in texto or "sci-fi" in texto or "science fiction" in texto:
         busca = "sci-fi"
+        genre_id = GENRES.get("scifi")
     elif "comédia" in texto or "comedy" in texto:
         busca = "comedy"
+        genre_id = GENRES.get("comedy")
     elif "terror" in texto or "horror" in texto:
         busca = "horror"
+        genre_id = GENRES.get("horror")
     elif "ação" in texto or "action" in texto:
         busca = "action"
+        genre_id = GENRES.get("action")
     elif "romance" in texto or "romance" in texto:
         busca = "romance"
+        genre_id = GENRES.get("romance")
+    elif "animação" in texto or "animation" in texto:
+        busca = "animation"
+        genre_id = GENRES.get("animation")
+    elif "mistério" in texto or "mystery" in texto:
+        busca = "mystery"
+        genre_id = GENRES.get("mystery")
+    elif "fantasia" in texto or "fantasy" in texto:
+        busca = "fantasy"
+        genre_id = GENRES.get("fantasy")
     else:
+        # Sem categoria: usa texto puro
         lixo = ["melhores", "filmes", "de", "os", "uma", "um", "top", "recomendar"]
         palavras = texto.split()
         busca = " ".join([p for p in palavras if p not in lixo])
+        genre_id = None
     
-    return busca, intencao
+    return busca, intencao, genre_id
 
-# --- BUSCA LISTA DE FILMES (COM POSTER) ---
-def buscar_filme(termo, intencao, chat_id, message_id):
-    params = {
-        "api_key": TMDB_API_KEY,
-        "query": termo,
-        "language": "pt-BR"
-    }
-    
+# --- BUSCA LISTA DE FILMES (COM FILTRO POR GÊNERO) ---
+def buscar_filme(termo, intencao, genre_id, chat_id, message_id):
     try:
-        response = requests.get(f"{TMDB_BASE}/search/movie", params=params, timeout=10)
+        if genre_id:
+            # Busca por GÊNERO (não por texto)
+            params = {
+                "api_key": TMDB_API_KEY,
+                "with_genres": genre_id,
+                "sort_by": "vote_average.desc" if intencao == "melhores" else "popularity.desc",
+                "language": "pt-BR",
+                "page": 1
+            }
+            response = requests.get(f"{TMDB_BASE}/discover/movie", params=params, timeout=10)
+        else:
+            # Busca por TEXTO (ex: "Matrix")
+            params = {
+                "api_key": TMDB_API_KEY,
+                "query": termo,
+                "language": "pt-BR"
+            }
+            response = requests.get(f"{TMDB_BASE}/search/movie", params=params, timeout=10)
         
         if response.status_code != 200:
             return "Erro na API TMDb (Status {}).".format(response.status_code)
@@ -60,7 +104,8 @@ def buscar_filme(termo, intencao, chat_id, message_id):
         
         lista_filmes = dados["results"]
         
-        if intencao == "melhores":
+        # Se intenção é "melhores" e não é filtro por gênero, ordena manualmente
+        if intencao == "melhores" and not genre_id:
             lista_filmes.sort(key=lambda x: float(x.get('vote_average', 0)), reverse=True)
         
         top_filmes = lista_filmes[:10]
@@ -193,8 +238,8 @@ def webhook():
         message_id = update["message"]["message_id"]
         user_text = update["message"]["text"]
         
-        termo_busca, intencao = interpretar_comando(user_text)
-        buscar_filme(termo_busca, intencao, chat_id, message_id)
+        termo_busca, intencao, genre_id = interpretar_comando(user_text)
+        buscar_filme(termo_busca, intencao, genre_id, chat_id, message_id)
         
         return "OK"
     
