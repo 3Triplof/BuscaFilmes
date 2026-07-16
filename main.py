@@ -9,14 +9,14 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 URL_FILMES = "https://imdb.iamidiotareyoutoo.com/search"
 
-# --- FUNÇÃO DE INTERPRETAÇÃO (Novo!) ---
+# --- FUNÇÃO DE INTERPRETAÇÃO ---
 def interpretar_comando(texto):
     texto = texto.lower()
     busca = ""
     
     # Detecta categoria
     if "ficção" in texto or "sci-fi" in texto or "science fiction" in texto:
-        busca = "sci-fi" # A API busca melhor em inglês
+        busca = "sci-fi"
     elif "comédia" in texto or "comedy" in texto:
         busca = "comedy"
     elif "terror" in texto or "horror" in texto:
@@ -26,43 +26,59 @@ def interpretar_comando(texto):
     elif "romance" in texto or "romance" in texto:
         busca = "romance"
     else:
-        # Se não tem categoria, busca pelo texto puro (ex: "Matrix")
-        # Remove palavras como "melhores", "filmes", etc.
+        # Sem categoria: usa texto puro
         lixo = ["melhores", "filmes", "de", "os", "uma", "um", "top", "recomendar"]
         palavras = texto.split()
         busca = " ".join([p for p in palavras if p not in lixo])
     
     return busca
 
-# --- FUNÇÃO DE BUSCA ---
+# --- FUNÇÃO DE BUSCA (CORRIGIDA) ---
 def buscar_filme(termo):
-    # Se o termo veio da interpretação (ex: "sci-fi"), usa ele.
-    # Se veio da busca direta (ex: "Matrix"), o termo já é o nome.
     params = {"q": termo}
-    response = requests.get(URL_FILMES, params=params)
     
-    if response.status_code == 200:
+    try:
+        response = requests.get(URL_FILMES, params=params, timeout=5)
+        
+        if response.status_code != 200:
+            return f"Erro na API (Status {response.status_code})."
+        
         dados = response.json()
-        if dados.get("results"):
-            lista_filmes = dados["results"]
+        
+        # Agora busca em "description" (não "results")
+        if not datos.get("ok") or not dados.get("description"):
+            # Nota: corrigido para "dados" (em português do código)
+            if not dados.get("ok") or not dados.get("description"):
+                return f"Nenhum filme encontrado para '{termo}'. Tente outro nome."
+        
+        lista_filmes = dados["description"]
+        
+        # Se usuário quer "melhores", ordena por RANK (rank menor = popular)
+        if "melhor" in termo.lower() or "top" in termo.lower():
+            lista_filmes.sort(key=lambda x: int(x.get('#RANK', 999999)))
+            melhores = lista_filmes[:3]
             
-            # Se o usuário disse "melhores", ordena por nota (rating)
-            if "melhor" in termo.lower() or "top" in termo.lower():
-                lista_filmes.sort(key=lambda x: float(x.get('rating', 0)), reverse=True)
-                melhores = lista_filmes[:3]
+            resposta = "🎥 *Top 3 Filmes Relacionados:*\n\n"
+            for i, filme in enumerate(melhores):
+                titulo = filme.get('#TITLE', 'Unknown')
+                ano = filme.get('#YEAR', 'Unknown')
+                rank = filme.get('#RANK', 'Unknown')
                 
-                resposta = "🎥 *Top 3 Filmes Relacionados:*\n\n"
-                for i, filme in enumerate(melhores):
-                    resposta += f"{i+1}° *{filme['title']}* ({filme['year']})\n"
-                    resposta += f"   ⭐ {filme['rating']}/10\n"
-                    resposta += f"   📝 {filme['description'][:80]}...\n\n"
-                return resposta
+                resposta += f"{i+1}° *{titulo}* ({ano})\n"
+                resposta += f"   🏆 Rank: {rank}\n\n"
+            return resposta
+        
+        # Volta o primeiro resultado
+        filme = lista_filmes[0]
+        titulo = filme.get('#TITLE', 'Unknown')
+        ano = filme.get('#YEAR', 'Unknown')
+        link = filme.get('#IMDB_URL', '')
+        
+        return f"🎬 *{titulo}*\n📅 {ano}\n🔗 {link}"
             
-            # Se não é "melhores", mostra apenas o primeiro resultado
-            filme = lista_filmes[0]
-            return f"🎬 *{filme['title']}*\n📅 {filme['year']}\n⭐ {filme['rating']}/10\n📝 {filme['description'][:150]}..."
-            
-    return "Filme não encontrado ou erro na API."
+    except Exception as e:
+        print(f"ERRO DE CONEXÃO: {str(e)}")
+        return "Erro de conexão com a API de filmes."
 
 # --- ENDPOINT WEBHOOK ---
 @app.route("/webhook", methods=["POST"])
