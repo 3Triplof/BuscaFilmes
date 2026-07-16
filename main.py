@@ -9,10 +9,15 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 URL_FILMES = "https://imdb.iamidiotareyoutoo.com/search"
 
-# --- FUNÇÃO DE INTERPRETAÇÃO ---
+# --- FUNÇÃO DE INTERPRETAÇÃO (RETORNA BUSCA + INTENÇÃO) ---
 def interpretar_comando(texto):
     texto = texto.lower()
     busca = ""
+    intencao = "normal"  # Pode ser "normal" ou "melhores"
+    
+    # Detecta intenção
+    if "melhor" in texto or "top" in texto:
+        intencao = "melhores"
     
     # Detecta categoria
     if "ficção" in texto or "sci-fi" in texto or "science fiction" in texto:
@@ -31,7 +36,7 @@ def interpretar_comando(texto):
         palavras = texto.split()
         busca = " ".join([p for p in palavras if p not in lixo])
     
-    return busca
+    return busca, intencao
 
 # --- FUNÇÃO DE BUSCA (MOSTRA TOP 10 SEMPRE) ---
 def buscar_filme(termo, intencao):
@@ -66,11 +71,12 @@ def buscar_filme(termo, intencao):
             resposta += f"{i+1}° *{titulo}* ({ano})\n"
             resposta += f"   🏆 Rank: {rank}\n\n"
         
-        return resposta
+        return respuesta
             
     except Exception as e:
         print(f"ERRO DE CONEXÃO: {str(e)}")
         return "Erro de conexão com a API de filmes."
+
 # --- ENDPOINT WEBHOOK ---
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -80,11 +86,11 @@ def webhook():
         chat_id = update["message"]["chat"]["id"]
         user_text = update["message"]["text"]
         
-        # 1. INTERPRETA o que o usuário quer
-        termo_busca = interpretar_comando(user_text)
+        # 1. INTERPRETA (busca + intencao)
+        termo_busca, intencao = interpretar_comando(user_text)
         
-        # 2. Busca na API
-        resposta = buscar_filme(termo_busca)
+        # 2. Busca na API (passa intencao)
+        resposta = buscar_filme(termo_busca, intencao)
         
         # 3. Responde
         payload = {
@@ -99,7 +105,6 @@ def webhook():
 # --- CONFIGURAÇÃO DO WEBHOOK (Rodar apenas uma vez) ---
 @app.route("/setup", methods=["GET"])
 def setup_webhook():
-    # URL do seu Render
     my_url = os.getenv("RENDER_EXTERNAL_URL") + "/webhook"
     
     payload = {
