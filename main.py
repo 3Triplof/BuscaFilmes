@@ -46,7 +46,7 @@ def buscar_filme(termo):
         dados = response.json()
         
         # Agora busca em "description" (não "results")
-        if not datos.get("ok") or not dados.get("description"):
+        if not dados.get("ok") or not dados.get("description"):
             # Nota: corrigido para "dados" (em português do código)
             if not dados.get("ok") or not dados.get("description"):
                 return f"Nenhum filme encontrado para '{termo}'. Tente outro nome."
